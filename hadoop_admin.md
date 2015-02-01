@@ -765,9 +765,7 @@ the distribution of blocks across datanodes can become unbalanced. this can affe
 
 the balancer is a daemon that redistributed blocks by moving them from overutilized datanodes to underutilized datanodes.
 
-utilization of every data nodes is the ratio of used space on the node to total capacity of the node differs from the utilization of the cluster ratio of used space on the cluster to total capacity of the cluster
-
-```start-balancer.sh```
+utilization of every data nodes is the ratio of used space on the node to total capacity of the node differs from the utilization of the cluster ratio of used space on the cluster to total capacity of the cluster. ```start-balancer.sh```
 
 
 ### Monitoring
