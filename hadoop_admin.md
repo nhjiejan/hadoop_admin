@@ -250,8 +250,7 @@ Things that can fail:
 
 ##### Task Failure
 * runtime exceptions and sudden exits of the JVM and hanging tasks are propgated back to the application master.
-* a task is marked as failed after four attempts
-```mapreduce.map.maxattempts```
+* a task is marked as failed after four attempts. ```mapreduce.map.maxattempts```
 
 ##### Application master failure
 * applications in YARN are tried multiple times in the event of failure. default applications are marked as failued if they fail once.
