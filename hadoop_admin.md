@@ -4,31 +4,6 @@
 
 realtional data is often normalised to retain integrity and remove redundancy. Normalization poses problems for mapreduce because it makes reading a record a nonlocal operation. one of the central assumptions that MapReduce makes is that it is possible to perform high speed streaming reads and writes.
 
-Hadoop"Scalability"
-! Hadoop%aims%for%linear%horizontal%scalability%
-– Cross/communicaDon"among"nodes"is"minimal""
-– Just"add"nodes"to"increase"cluster"capacity"and"performance"
-! Clusters%are%built%from%industry#standard%hardware%%
-– Widely/available"and"relaDvely"inexpensive"servers"
-– You"can"“scale"out”"later"when"the"need"arises"
-
-Op.miza.on:%Use%intelligent%job%scheduling%(data%locality)%
-– Hadoop"tries"to"process"data"on"the"same"machine"that"stores"it"
-– This"improves"performance"and"conserves"bandwidth"
-– “Bring"the"computaDon"to"the"data”"
-
-Many%related%tools%integrate%with%Hadoop%
-– Data"processing:"Spark"
-– Data"analysis:"Hive,"Pig,"and"Impala"
-– Data"discovery:"Solr"
-– Machine"learning:"Mahout"and"Oryx"
-– Data"ingesDon:"Sqoop"and"Flume"
-– CoordinaDon:"ZooKeeper"
-– User"experience:"Hue"
-– Workflow"management:"Oozie"
-– Cluster"management:"Cloudera"Manager
-
-
 
 # HDFS (17%)
 
@@ -268,10 +243,10 @@ these resources are described as containers with a fixed amount of memory (appli
 ### Faliures in YARN
 
 Things that can fail:
-	* the task
-	* the application master
-	* the node manager
-	* the resource manager
+* the task
+* the application master
+* the node manager
+* the resource manager
 
 ##### Task Failure
 * runtime exceptions and sudden exits of the JVM and hanging tasks are propgated back to the application master.
