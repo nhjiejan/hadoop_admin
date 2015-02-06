@@ -1161,3 +1161,294 @@ Assuming HDFS default settings, why does HBase write to the WAL (write-ahead log
 
 Correct Answer:
 To ensure that data isn’t lost in the event of a RegionServer failure
+
+
+
+You have a cluster running 32 slave nodes and three master nodes, running MapReduce v1 (MRv1). You execute the command: 
+
+$ hadoop fsck /
+
+Correct Answer:
+ 	The number of DataNodes in the cluster
+ 	The number of under-replicated blocks in the cluster
+
+In its standard form, hadoop fsck / will return information about the cluster including the number of DataNodes and the number of under-replicated blocks. 
+
+To view a list of all the files in the cluster, the command would be hadoop fsck / -files
+
+To view a list of all the blocks, and the locations of the blocks, the command would be hadoop fsck / -files -blocks -locations
+
+Additionally, the -racks option would display the rack topology information for each block.
+
+
+On a cluster which is NOT running HDFS High Availability, which four pieces of information does the NameNode store on disk?
+
+Correct Answer:
+ 	Names of the files in HDFS
+ 	The directory structure of the files in HDFS
+ 	An edit log of changes that have been made since the last snapshot compaction by the Secondary NameNode
+ 	File permissions of the files in HDFS
+
+The NameNode holds its metadata in RAM for fast access. However, it also needs to persist that information to disk. The initial metadata on disk is stored in a file called fsimage. Metadata in fsimage includes the names of all the files in HDFS, their locations (the directory structure), and file permissions. Whenever a change is made to the metadata (such as a new file being created, or a file being deleted), that information is written to a file on disk called edits. Periodically, the Secondary NameNode coalesces the edits and fsimage files and writes the result back as a new fsimage file, at which point the NameNode can delete its old edits file. 
+
+The NameNode has no knowledge of when it was last backed up. Heartbeat information from the DataNodes is held in RAM but is not persisted to disk.
+
+
+
+You are configuring a highly available production HBase cluster and have specified a ZooKeeper ensemble of 5 nodes. How many simultaneous ZooKeeper outages can your ensemble handle?	
+
+In order to form a proper ZooKeeper quorum, you need at least 3. Therefore, a ZooKeeper ensemble of 5 allows 2 peers to fail.
+
+Further Reading
+HBase documentation on ZooKeeper, in particular the section:
+How many ZooKeepers should I run?
+You can run a ZooKeeper ensemble that comprises 1 node only but in production it is recommended that you run a ZooKeeper ensemble of 3, 5 or 7 machines; the more members an ensemble has, the more tolerant the ensemble is of host failures. Further, you should run an odd number of machines. In ZooKeeper, an even number of peers is supported, but it is normally not used because an even-sized ensemble requires, proportionally, more peers to form a quorum than an odd sized ensemble requires. For example, an ensemble with 4 peers requires 3 to form a quorum, while an ensemble with 5 also requires 3 to form a quorum. Thus, an ensemble of 5 allows 2 peers to fail, and thus is more fault tolerant than the ensemble of 4, which allows only 1 down peer.
+
+
+You have configured your cluster’s dfs.hosts property to point to a file on your NameNode listing all the DataNode hosts allowed to join your cluster. You add a new node to the cluster and update dfs.hosts to include the new host. What do you need to do next to ensure the NameNode reads the change?
+
+Correct Answer:
+You should issue the command hadoop dfsadmin -refreshNodes.
+
+The dfs.hosts property is optional, but if it is configured, it lists all of the machines which are allowed to act as DataNodes on the cluster. The NameNode reads this file when it starts up. To force the NameNode to re-read the file, you should issue the hadoop dfsadmin -refreshNodes command. The NameNode will, of course, also re-read the file if it is restarted, but that is not necessary, and it is certainly not necessary to restart any of the DataNodes on the cluster.
+
+--
+You set the value of mapred.child.java.opts to -Xmx200M on all TaskTrackers in the cluster. You set the same configuration parameter to -Xmx500M on the JobTracker. What size heap will a Map task running on the cluster have?
+
+Correct Answer:
+200MB
+
+mapred.child.java.opts is a setting which is read by the TaskTracker when it starts up. The value configured on the JobTracker has no effect; it is the value on the slave node which is used. (The value can be modified by a job, if it contains a different value for the parameter.)
+
+--
+
+You have a Hadoop cluster running HDFS, and a gateway machine external to the cluster from which clients submit jobs. What do you need to do in order to run Impala on the cluster and submit jobs from the command line of the gateway machine?
+
+Correct Answer:
+ 	Install the statestored daemon on one machine in your cluster
+ 	Install the catalogd daemon on one machine in your cluster
+ 	Install the impalad daemon on each machine in your cluster
+ 	Install the Impala shell (impala-shell) on your gateway machine
+
+To run Impala on your cluster, you should have the impalad daemon running on each machine in the cluster. Impala requires just one instance of the statestore daemon and one instance of the catalogd daemon; each of these should run on a node (ideally the same one) in the cluster. Finally, the impala shell allows users to connect to, and submit queries to, the Impala daemons, and so should be installed on the gateway machine.
+
+--
+
+What does the io.sort.mb parameter control?
+
+Correct Answer:
+The size of the in-memory circular buffer into which a Map task writes data before that data is written to disk
+
+When Mappers emit intermediate data, that data is written to disk. However, it is not written directly to disk; instead, it is written to a buffer in RAM and, when the size of the data in the buffer reaches a certain threshhold, it is sorted and then written (“spilled”) to disk. The size of the buffer is controlled by the io.sort.mb parameter; the default is 100MB.
+
+--
+On a cluster which is NOT running HDFS High Availability, which four pieces of information does the NameNode store on disk?
+
+Correct Answer:
+ 	Names of the files in HDFS
+ 	The directory structure of the files in HDFS
+ 	An edit log of changes that have been made since the last snapshot compaction by the Secondary NameNode
+ 	File permissions of the files in HDFS
+
+The NameNode holds its metadata in RAM for fast access. However, it also needs to persist that information to disk. The initial metadata on disk is stored in a file called fsimage. Metadata in fsimage includes the names of all the files in HDFS, their locations (the directory structure), and file permissions. Whenever a change is made to the metadata (such as a new file being created, or a file being deleted), that information is written to a file on disk called edits. Periodically, the Secondary NameNode coalesces the edits and fsimage files and writes the result back as a new fsimage file, at which point the NameNode can delete its old edits file. 
+
+The NameNode has no knowledge of when it was last backed up. Heartbeat information from the DataNodes is held in RAM but is not persisted to disk.
+
+--
+
+What four functions do scheduling algorithms perform on a Hadoop cluster?
+
+Correct Answer:
+ 	Reduce job latencies in an environment with multiple jobs of different sizes.
+ 	Allow multiple users to share clusters in a predictable, policy-guided manner.
+ 	Support the implementation of service-level agreements for multiple cluster users.
+ 	Allow short jobs to complete even when large, long jobs (consuming a lot of resources) are running.
+
+Fair scheduling is a method of assigning resources to applications such that all apps get, on average, an equal share of resources over time. Hadoop NextGen is capable of scheduling multiple resource types. By default, the Fair Scheduler bases scheduling fairness decisions only on memory. It can be configured to schedule with both memory and CPU, using the notion of Dominant Resource Fairness developed by Ghodsi et al. When there is a single app running, that app uses the entire cluster. When other apps are submitted, resources that free up are assigned to the new apps, so that each app eventually on gets roughly the same amount of resources. Unlike the default Hadoop scheduler, which forms a queue of apps, this lets short apps finish in reasonable time while not starving long-lived apps. It is also a reasonable way to share a cluster between a number of users. Finally, fair sharing can also work with app priorities - the priorities are used as weights to determine the fraction of total resources that each app should get.
+
+The scheduler organizes apps further into "queues", and shares resources fairly between these queues. By default, all users share a single queue, named “default”. If an app specifically lists a queue in a container resource request, the request is submitted to that queue. It is also possible to assign queues based on the user name included with the request through configuration. Within each queue, a scheduling policy is used to share resources between the running apps. The default is memory-based fair sharing, but FIFO and multi-resource with Dominant Resource Fairness can also be configured. Queues can be arranged in a hierarchy to divide resources and configured with weights to share the cluster in specific proportions.
+
+In addition to providing fair sharing, the Fair Scheduler allows assigning guaranteed minimum shares to queues, which is useful for ensuring that certain users, groups or production applications always get sufficient resources. When a queue contains apps, it gets at least its minimum share, but when the queue does not need its full guaranteed share, the excess is split between other running apps. This lets the scheduler guarantee capacity for queues while utilizing resources efficiently when these queues don't contain applications.
+
+The Fair Scheduler lets all apps run by default, but it is also possible to limit the number of running apps per user and per queue through the config file. This can be useful when a user must submit hundreds of apps at once, or in general to improve performance if running too many apps at once would cause too much intermediate data to be created or too much context-switching. Limiting the apps does not cause any subsequently submitted apps to fail, only to wait in the scheduler's queue until some of the user's earlier apps finish.
+
+--
+
+Your Hadoop cluster has 12 worker nodes, a block size set to 64MB, and a replication factor of three. All worker nodes are running DataNode daemons and TaskTracker daemons and all daemons are running normally.
+
+Which best describes how the Hadoop framework distributes block writes into HDFS from a Reducer outputting a 150MB file?
+
+Correct Answer:
+The worker node on which the Reducer runs gets the first copy of every block written. Other block replicas will be placed on other nodes
+
+In our example, with a block size of 64MB and a replication factor of 3, when the Reducer writes the file it will be split into three blocks (a 64MB block, another 64MB block, and a 22MB block). Each block will be replicated three times. For efficiency, if a client (in this case the Reduce task) is running on a cluster node, the first replica of each block it creates will be sent to the DataNode daemon running on that same node. The other two replicas will be written to DataNodes on other machines in the cluster
+
+--
+How should you configure the Secondary NameNode daemon when implementing HDFS High Availability (HA)?
+
+Correct Answer:
+Reconfigure the Secondary NameNode as another master node (e.g., Standby NameNode) as HDFS High Availability (HA) does not require a Secondary NameNode
+
+A Secondary NameNode is not required in a HDFS High Availability mode and should be removed from the cluster when migrating from a non-HA configuration. The checkpoint functions for the namespace will be performed by the Standby NameNode in a HDFS HA configuration.
+
+--
+
+### Test : HDFS Design
+
+Once a client application validates its identity and is granted access to a file in a cluster, what is the remainder of the read path back to the client?
+
+Correct Answer:
+The NameNode gives the client the block IDs and a list of DataNodes on which those blocks are found, and the application reads the blocks directly from the DataNodes.
+
+When a client wishes to read a file from HDFS, it contacts the NameNode and requests the locations and names of the first few blocks in the file. It then directly contacts the DataNodes containing those blocks to read the data. It would be very wasteful to move blocks around the cluster based on a client’s read request, so that is never done. Similarly, if all data was passed via the NameNode, the NameNode would immediately become a serious bottleneck and would slow down the cluster operation dramatically
+
+--
+
+The NameNode needs to know which DataNodes hold each HDFS block. How is that block location information managed?
+
+Correct Answer:
+The NameNode stores the block locations in RAM. They are never stored on disk
+
+The NameNode never stores the HDFS block locations on disk; it only stores the names of the blocks associated with each file. After the NameNode starts up, each DataNode heartbeats in and sends its block report, which lists all the blocks it holds. The NameNode keeps that information in RAM
+
+--
+How does the NameNode know which DataNodes are currently available on a cluster?
+
+Correct Answer:
+DataNodes heartbeat in to the master on a regular basis.
+
+DataNodes heartbeat in to the master every three seconds. When a DataNode heartbeats in to the NameNode the first time, the NameNode marks it as being available. DataNodes can be listed in a file pointed to by the dfs.hosts property, but this only lists the names of possible DataNodes. It is not a definitive list of those which are available but, rather, a list of the only machines which may be used as DataNodes if they begin to heartbeat. 
+
+--
+Which two daemons typically run on each slave node in a Hadoop cluster running MapReduce v2 (MRv2) on YARN?
+
+Correct Answer:
+ 	DataNode
+ 	NodeManager
+
+Each slave node in a cluster configured to run MapReduce v2 (MRv2) on YARN typically runs a DataNode daemon (for HDFS functions) and NodeManager daemon (for YARN functions). The NodeManager handles communication with the ResourceManager, oversees application container lifecycles, monitors CPU and memory resource use of the containers, tracks the node health, and handles log management. It also makes available a number of auxiliary services to YARN applications.
+
+--
+
+What is the difference between yarn-site.xml and yarn-default.xml?
+
+Correct Answer:
+yarn-default.xml specifies YARN defaults and serves mainly as documentation. yarn-site.xml specifies custom configuration values and overrides the property values of yarn-default.xml
+
+--
+During a MapReduce v2(MRv2) job submission, there are a number of steps between the ResourceManager receiving the job submission and the map tasks running on different nodes.
+
+Order the following steps according to the flow of job submission in a YARN cluster:
+
+1. The ResourceManager scheduler allocates a container for the ApplicationMaster
+
+2. The ResourceManager application manager asks a NodeManager to launch the ApplicationMaster
+
+3. The ApplicationMaster determines the number of map tasks based on the input splits
+
+4.The ApplicationMaster sends a request to the ResourceManager to assign containers for each map task
+
+5.The ResourceManager scheduler makes a decision where to run the map tasks based on the memory requirements and data locality
+
+6. The ApplicationMaster sends a request to the assigned NodeManagers to run the map tasks
+
+--
+
+How does the Hadoop framework determine the number of Mappers required for a MapReduce job on a cluster running MapReduce v2 (MRv2) on YARN?
+
+Correct Answer:
+The number of Mappers is equal to the number of InputSplits calculated by the client submitting the job
+
+Each Mapper task processes a single InputSplit. The client calculates the InputSplits before submitting the job to the cluster. The developer may specify how the input split is calculated, with a single HDFS block being the most common split. This is true for both MapReduce v1 (MRv1) and YARN MapReduce implementations.
+
+With YARN, each mapper will be run in a container which consists of a specific amount of CPU and memory resources. The ApplicationMaster requests a container for each mapper. The ResourceManager schedules the resources and instructs the ApplicationMaster of available NodeManagers where the container may be launched. 
+
+With MRv1, each Tasktracker (slave node) is configured to handle a maximum number of concurrent map tasks. The JobTracker (master node) assigns a Tasktracker a specific Inputslit to process as a single map task.
+
+--
+
+Which three describe functions of the ResourceManager in YARN?
+
+Correct Answer:
+ 	Tracking heartbeats from the NodeManagers
+ 	Running a scheduler to determine how resources are allocated
+ 	Monitoring the status of the ApplicationMaster container and restarting on failure
+
+The ResourceManager has two main components: Scheduler and ApplicationsManager.
+
+The Scheduler is responsible for allocating resources to the various running applications subject to familiar constraints of capacities, queues etc.
+The ResourceManger tracks heartbeats from the NodeManagers to determine available resources then schedules those resources based on the scheduler specific configuration.
+
+The ApplicationsManager is responsible for accepting job-submissions, negotiating the first container for executing the application specific ApplicationMaster and provides the service for restarting the ApplicationMaster container on failure.
+
+The per-application ApplicationMaster has the responsibility of negotiating appropriate resource containers from the Scheduler, tracking their status and monitoring for progress. Depending on the type of application, this may include monitoring the map and reduce tasks progress, restarting tasks, and archiving job history and meta-data.
+
+The NodeManager is the per-machine framework agent who is responsible for containers, monitoring their resource usage (cpu, memory, disk, network) and reporting the same to the ResourceManager/Scheduler.
+
+--
+Monitoring
+
+You are running a Hadoop cluster with a NameNode on host mynamenode. What are two ways you can determine available HDFS space in your cluster?
+
+Correct Answer:
+ 	Run hdfs dfsadmin -report and locate the DFS Remaining value.
+ 	Connect to http://mynamenode:50070/ and locate the DFS Remaining value.
+
+
+
+lsswap does not exist.
+memusage does not exist.
+jps lists the running Java processes, but does not provide any information on system memory usage.
+df provides information about free disk space, not RAM.
+top, free, and vmstat can all be used to display memory and swap information.
+
+
+Additionally memory and swap usage can be viewed with cat /proc/meminfo and swap usage can be viewed with cat /proc/swaps or swapon -s
+
+
+--
+
+What must you do if you are running a Hadoop cluster with a single NameNode and six DataNodes, and you wish to change the configuration of all DataNodes.
+
+Correct Answer:
+ 	You must restart all six DataNode daemons to apply the changes
+
+To change the configuration of a DataNode daemon, you must modify the configuration file on the machine on which the daemon is running, and then restart that daemon. So to change the configuration of all datanodes, after changing the configuration files you must restart all six of the DataNodes. You do not need to restart the NameNode, since its configuration has not changed.
+
+### Test: Planning a Hadoop Cluster
+
+You have data already stored in HDFS and are considering using HBase. Which additional feature does HBase provide to HDFS?
+
+Correct Answer:
+Random writes
+
+Apache HBase provides random, realtime read/write access to your data. HDFS does not allow random writes. HDFS is built for scalability, fault tolerance, and batch processing.
+
+
+### Test: Installation and configuration
+
+
+Your cluster has nodes in seven racks. You have NOT configured your Hadoop cluster with a rack topology script. What best describes Hadoop’s block placement policy, assuming a block replication factor of three?
+
+Correct Answer:
+Hadoop will write replicas of blocks to three nodes with no consideration for rack location.
+
+If no rack topology script has been created, Hadoop has no knowledge of which rack each node is in. It cannot determine this dynamically, so it assumes that all nodes are in the same rack; when it chooses which nodes should be used for each of the three replicas of a block it therefore cannot have any consideration for rack location
+
+
+### Test: Monitoring
+
+
+A specific node in your cluster appears to be running slower than other nodes with the same hardware configuration. You suspect a RAM failure in the system. Which commands may be used to the view the memory seen in the system?
+
+Correct Answer:
+ 	free
+ 	top
+ 	dmidecode
+
+lsram does not exist.
+memusage does not exist.
+jps lists the running Java processes, but does not provide any information on system memory usage.
+df provides information about free disk space, not RAM.
+top and free can be used to display memory and swap information. In both applications the memory in use includes read cache which will be released for application use before swapping begins.
+dmidecode shows bios information on a running system. The amount of installed RAM and size of the modules in each slot can be found in the output.
