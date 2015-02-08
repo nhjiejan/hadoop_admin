@@ -39,7 +39,38 @@ times.
 * lots of small files:
 	namenode holds filesystem metadata in memory, the limit to the number of files in a fs is governed by the amount of memory on the nn. each file, directory and block take up 150 bytes. e.g. one million files = 300mb in metadata in mem.
 
-* Multiple writes, arbitary file modifications:
+* Multiple writes, arbitary file modifications.
+
+### Anatomy of a file write:
+1. client connects to the NameNode
+2.  NameNode places an entry for the file in its metadata, returns the block name and list of DataNodes to the client
+3. client connects to the first DataNode and starts sending data
+4. as the data is recieved by the first datanode, it connects to the second and starts sending data
+5. second datanode similarly connects to the third
+ack packets from the pipeline are sent back to the client
+6. client reports to the namenode when the block is written
+
+### HDFS block replication strategy
+1. first copy of the block is placed on the same node as the client
+-if the cleint is not part of the cluster, the first block is placed on a random node
+
+2. second copy of the block is placed on a node residing on a different rack
+
+3. third copy of the block is placed on different node in the same rach as the second copy
+
+### Anatomy of a file read
+
+1. client connects to the namenode
+
+2. namenode returns the name and locations of the first few blocks of the file (closest returned first)
+
+3. client connects to the first of the datanodes, then reads the block
+
+if the datadatanode fails during the read, the client will seamlessly connect to the next one in the list to read the block
+
+### HDFS file permissions
+
+files in hdfs have an owner, group and permissions. read(r), write (w), and execute (x) for each of owner, group and other. x is ignored for files. for directories, x means that its children can be accessed.
 
 
 ### HDFS conecepts:
@@ -83,6 +114,12 @@ havin block abstraction for a distributed fs means a file can be larger than any
 
 * HDFS HIGH-AVAILABILITY:
 
+hdfs HA uses a pair of NAmeNodes. one active and one standby. clients only contact the active. datanodes heartbeat in to both namenodes. active namenode writes its metadata to a quorum of JournalNodes. standby namenode reads from the JournalNodes to remain in sync with the active Namenode
+
+active namenode writes edits to the JournalNodes.
+
+there is no secondary namenode when implementing hdfs high availability
+
 	the namenode is still a single point of failure even with a fed. (SPOF). the namenode is the sole repo of the metadata and the file-to-block mapping. if the nn fails, everything fails.
 
 	to recover:
@@ -100,6 +137,12 @@ havin block abstraction for a distributed fs means a file can be larger than any
 			3) clients must be configed to handle nn failover
 
 * NAMENODE HIGH AVAILABILITY
+
+hdfs HA uses a pair of NAmeNodes. one active and one standby. clients only contact the active. datanodes heartbeat in to both namenodes. active namenode writes its metadata to a quorum of JournalNodes. standby namenode reads from the JournalNodes to remain in sync with the active Namenode
+
+active namenode writes edits to the JournalNodes.
+
+there is no secondary namenode when implementing hdfs high availability
 
 	deployed as a pair of namenodes. the edits write ahead log needs to be available on both nn so stored on shared storage (NFS)/ as the active namenode writes to the edits log, the standby namenode is constantly replaying transactions to ensure it is up to date and ready to take over in case of failure.
 
@@ -270,9 +313,15 @@ Things that can fail:
 * the storage used by the resource manager is configed via ```yarn.resourcemanager.store.class``` property
 
 
-### Job Scheduling
+## Job Scheduling
 
 previous versions of hadoop scheduled jobs in order of submission, called the FIFO scheduler. each job would use the whole cluster. not good for shared cluster usage.
+
+to view all jobs currently running on the cluster:
+```yarn application -list```
+```yarn application -list all``` to view all
+```yarn application -status "app id"
+
 
 #### The Fair Scheduler
 
@@ -281,6 +330,26 @@ if a single job is running, it gets all of the cluster
 jobs are placed in pools, by default each user gets their own pool
 supports preemtion, so if a pool has not recieved its fair share for a certain period of time, the scheduler will kill tasks in pools running over capacity in order to give more slots to the pool running under capacity
 `org.apache.hadoop.mapred.FairScheduler`
+
+this is set as default. it should allow short jobs to coexist with long jobs. should allow resources to be controlled proportionally.
+
+the Fair sch awards resources to pools that are most underserved
+
+each job is assigned to a pool/queue
+
+pools can be predefined or defined dynamically by specifying a pool name when job is submitted
+
+the Fair sch uses three technoques for prioritizing jobs within pools:
+* single resource fairness (default)
+* Dominant resource fairness
+* FIFO
+
+excess cluster capacity is spread across all pools. pools can use more than their fair share when other pools are not in need of resources
+
+if shares are imbalanced, pools which are over their fair share may not asign new tasks when their old ones complete. those resources then become available to pools which are operating below their fair share
+
+##### Configuring fair scheduler
+see hadoop config
 
 
 #### The Capacity Scheduler
@@ -298,8 +367,85 @@ supports preemtion, so if a pool has not recieved its fair share for a certain p
 
 note: table 6-1 page 213
 
+## extra notes: cloudera admin
+
+mapreduce is a programming model. record -oriented data processing (key value). facilitats task distribution across multiple nodes
+
+where possible, each node processes data stored on that node
+
+in between map and refuce is the shuffle and sort. sends data from the mappers to the reducers
+
+key concepts:
+1. the mapper works on an individual record at a time
+2. the reducer aggregates results from the mappers
+3. the intermediate keys produced by the mapper are the keys on which the aggregation will be based
+4. intermediate data is written by the mapper to local disk
+during the shufle and sort phase, all the values asociated with the same intermediate key are transferred to the same reducer.
+
+### YARN daemons:
+
+*  ####ResourceManager (one per cluster)
+
+initiates application startup, schedules resource usage on slave nodes
+
+it manages nodes. tracks heartbeats from the nodeManagers.
+
+it runs a scheduler. determines how resources are allocated
+
+it manages containers. hadles applicationMaster requests for resources. deallocates containers when they expire or when the application completes
+
+it manages applicationMasters. creates a container for ApplicationMasters and tracks heartbeats
+
+it manages cluster-level security
+
+* ####NodeManager (one per slave node)
+
+starts application processes, manages resources on slave nodes
+
+communicates with the ResourceManager. it registers and provides info on node resources. it sends heartbeats and container status
+
+it manages processes in containers. it launches applicationMasters on request from the ResourceManager. it launches processes on request from the ApplicationMasters. it monitors resource usage by containers, kills runaway processes
+
+it provides logging
+
+runs auxiliary services (persistent applications that provide services to applications. run in Nodemanagers JVM. used by mapreduce for shuffle and sort)
 
 
+* ####JobHistoryServer (one per cluster)
+
+archives jobs metrics and metadata
+
+### runnings an application in YARN
+
+#### Containers:
+
+allocated by the ResourceManager. require a certain amount of resources (mem, cpu) on a slave node. applications run in one or more containers
+
+#### Application Master
+one per application. framework/application specific. runs in a container. requests more containers to run application tasks
+
+### Fault Tolerance
+
+* #### Task(Container):
+	the applicationmaster will reattempt tasks that complete with exceptions or stop responding (4 times by default). Applications with too many failed tasks are considered failed.
+
+* #### ApplicationMaster:
+	if applications fail or if applicationMaster stops sending heartbeats, the resource manage will reattempt the whole application (2 times by default)
+
+* #### NodeManager:
+	if the nodemanager stops sending heartbeats to the resourcemanager, it is removed from list of active nodes. tasks on the node will be treated as failed application
+
+* #### ResourceManager:
+	no applications or tasks can be launched if the ResourceManager is unavailable. can be configd with HA.
+
+
+### MapReduce v1 Daemons
+
+#### JobTracker (one per cluster)
+manages mapreduce jobs, distributes individual tasks to TaskTrackers
+
+####TaskTrackers (one per slave node)
+starts and monitors individual map and reduce tasks
 
 # YARN (def guide 4th eddition)
 
@@ -693,7 +839,104 @@ multiple processes can modify data in each allocation group without conflict
 
 ### Network Usage in Hadoop: A Review
 
+# cloudera admin notes: Hadoop installation and initial config
 
+each machine in the hadoop cluster has its own set of configuration files. config files all reside in hadoop's conf dir.
+```/etc/hadoop/conf ```
+
+core-site.xml 		core
+hdfs-site.xml 		hdfs
+yarn-site.xml
+mapred-site.xml
+hadoop-policy.xml 	Access Control policies
+log4j.properties 		logging
+hadoop-metrics.properties
+include,exclude 		host inclusion/exclusion in a cluster
+allocations.xml 		FairScheduler
+hadoop-env.sh 			Environment variables
+
+
+in hadoop-env.sh
+
+HADOOP_CLASSPATH,
+HADOOP_HEADPSIZE (controls the heap size for all the hadoop daemons, default to 1gb),
+HADOOP_LOG_DIR,
+HADOOP_PID_DIR,
+JAVA_HOME
+
+when setting env variables, do it here to ensure that they are passed through to the control scripts
+
+### configuration value precedence:
+
+config param can be specified more than once. highest-precedence value takes priority
+
+precedence order: (highest to lowest):
+1. values set explicitly in the job object for a MR job
+2. ```*-site.xml ``` on the client machine
+3. ```*-site.xml ``` on the slave note
+
+however if a value in a config file is marked as final it overrides all others.
+
+cluster daemons gernerally need to be restarted to read in changes to their config files. datanodes do not need to be restarted if only namenode parameters were changed.
+
+
+### initial config
+
+fs.defaultFS (core-site) : the name of the default fs. includes namenodes hostname and port number e.g ```hdfs://<namenode01>:8020 ```
+
+hadoop.tmp.dir (core-site) base temp dir, both on local disk and in hdfs
+
+dfs.namenode.name.dir (hdfs-site.xml) : location on the local fs where the namenode stores its metadata
+
+loss of a namenodes metadata ill result in the loss of all data in its namespace. blocks will remain however cannot reconstruct data without metadata. by default, a namenode will write to the edit log in all dirs in dfs.namenode.name.dir
+
+dfs.datanode.du.reserved (hdfs-site.xml) : the amount of space on each volume which cannot be used for hdfs block storage
+
+dfs.datanode.data.dir(hdfs-site.xml) : where on the local filesystem a datanode stores its blocks. comma-sep list.
+
+dfs.blocksize (hdfs-site.xml) : the block size for new files in bytes
+
+dfs.replication (dfs-site.xml) the number of times each block should be replication. default 3.
+
+yarn.resourcemanager.hostname (yarn-site.xml) : host name od the ResourceManager, used by the Resource manager, NodeManagers and clients
+
+yarn.nodemanager.aux-services (yarn-site.xml) : a list of one or more auxiliary services that support application frameworks running under YARN. e.g. shuffle used by nodemanagers
+
+yarn.nodemanager.aux-services."service".class (yarn-site.xml) : the java class correesponding to one of the auxiliary services specified in above config
+
+#### application logging config
+
+yarn.log-aggregation-enable(yarn-site.xml): Enable log aggregation. Default: false.Recommendation: true. Used by the
+NodeManagers.
+
+yarn.nodemanager.remote-app-log-dir(yarn-site.xml) :HDFS directory to which application log files are aggregated. Example: /var/log/hadoop-yarn/apps. Used byNodeManagers and the JobHistoryServer.
+
+yarn.nodemanager.log-dirs (yarn-site.xml) : Local directories to which application log files are written. Note that with log aggregation enabled, these files are deleted after an application has
+completed. Example: /var/log/ hadoop-yarn/containers. Used by
+NodeManagers.
+
+#### Mapreduce config
+
+mapreduce.framework.name (mapred-site.xml) : MapReduce execution framework.
+Default: local. Recommendation: yarn. Used by clients.
+
+yarn.app.mapreduce.am.staging-dir(mapred-site.xml) :
+ The root directory in HDFS below which
+users’ job files – jar files needed by jobs,
+distributed cache that is local to clients,
+counters, and job configurations – are
+stored. This should be set to the value of
+the directory under which user directories
+are stored. Recommendation: /user.
+Used by the JobHistoryServer, clients,
+and ApplicationMasters.
+
+
+### Logging
+
+daemon logs location
+
+* default dir - /var/log/hadoop-"component"
 
 # Administrating Hadoop
 
@@ -836,7 +1079,21 @@ decomm process is controlled by an ```exclude file``` which for hdfs is set by d
 5) shutdown decomm nodes
 6) remove nodes from the include file then refreshNodes again.
 
+## recap
+### hdfs status
+hdfs fsck checks for missing or corrupt data blocks. options of -files, -blocks, -locations, -racks
 
+/lost+found : a corrupted file is one where all replicas of a block are missing
+
+```hdfs dfsadmin -report ``` list information about hdfs on a per-datanode basis
+
+```hdfs dfsadmin -refreshNodes ``` re-read the dfs.hosts and dfs.hosts.exclude files
+
+```hdfs dfsadmin -safemode enter /leave ```
+
+```hdfs dfsadmin -saveNamespace ``` save the namenode metadata to disk and resets edit log
+
+```hdfs dfsadmin -allowsnapshot "dir_name" ``` snapshot of hdfs dir
 
 # Misc (hadoop operations)
 
@@ -915,7 +1172,15 @@ mapred-default.xml, and yarn-default.xml)
 You can find Hive’s error log on the local filesystem at ${java.io.tmpdir}/${user.name}/hive.log.
 The logging configuration is in conf/hive-log4j.properties, and you can edit this file to change log levels and other logging-related settings.
 
-#### The MEtastore
+
+
+#### The Metastore
+
+by default, hive uses a metastore on the users local machine (apache Derby). a shared metastore is a database such as mysql
+
+hive clients make calls to the hive metastore service using the Thrift API (JDBC)
+
+hive runs on a users machine, not on the hadoop cluster itself. to install and configure. configure client so hive can access hadoop cluster via core-site.xml, yarn-site.xml and mapred-site.xml
 
 the metastore is the central repo of Hive metadata. it is divided into two pieces:
 1) a service
@@ -1019,7 +1284,45 @@ row format dictates how rows, and the fields in a particular row, are stored. ro
 
 # Impala
 
+uses the same shared metastore that hive uses. impala does not turn queries into mapreduce jobs. impala queries run on an additional set of daemons that run on the hadoop cluster (refered to as impala servers).
+
+impala servers should reside on each datanode host. one impala state store server and one impala catalog server on the cluster
+
+to configure:
+
+Copy hive-site.xml, core-site.xml, hdfs-site.xml, and
+log4j.properties to /etc/impala/conf on all the hosts that will
+run Impala Servers
+
+configure startup options in /etc/default/impala on all hosts that will run impalad, the impala state store server, or the impala catalog server
+
 impala uses a dedicated daemon that tuns on each datanode in the cluster. when a client runs a query it contacts an arbitary node running an impala daemon, which acts as a coordinator node for the query. the coordinator sends work to other impala daemons in the cluster and combines their results into the full result set for the query.
+
+dfs.client.read.shortcircuit (hdfs-site.xml) Allows daemons to read directly off their host’s disks instead of having to open a socket to talk to DataNodes. Required value: true.
+
+dfs.domain.socket.path (hdfs-site.xml) Short-circuit reads use a UNIX
+domain socket, which requires a path.
+Recommended value: /var/run/
+hadoop-hdfs/dn._PORT.
+dfs.client.file/block/
+storage/locations.timeout.
+millis
+(hdfs-site.xml) Timeout on a call to get the locations
+of required file blocks. Recommended
+value: 10000.""
+dfs.datanode.hdfs-blocks-
+metadata.enabled
+(hdfs-site.xml) Expose the disk on a datanode on
+which a block resides. Recommended
+value: true.
+
+in /etc/default/impala:
+
+IMPALA_STATE_STORE_HOST	 : THE HOST RUNNING THE IMPALA STATE STORE SERVER
+
+IMPALA_CATALOG_SERVICE_HOST : THE HOST RUNNING IMPALA CATALOG SERVER
+
+-mem_limit argument in ```export IMPALA_SERVER_ARGS ``` statement : the amount of system memory available to impala. default is 100%
 
 impala uses the Hive metastore.
 
@@ -1095,7 +1398,7 @@ By default, Hadoop replicates each HDFS block three times. So if your cluster ha
 You have a cluster running with the Fair Scheduler enabled and configured. You submit multiple jobs to the cluster. Each job is assigned to a pool. What are the two key points to remember about how jobs are scheduled with the Fair Scheduler?
 
 Correct Answer:
- 	Pools get a dynamically-allocated share of the available task slots (subject to additional constraints). 
+ 	Pools get a dynamically-allocated share of the available task slots (subject to additional constraints).
  	 	Each pool’s share of task slots may change throughout the course of job execution.
 
  Pools are allocated their ‘fair share’ of task slots based on the total number of slots available, and also the demand in the pool -- a pool will never be allocated more slots than it needs. The pool’s share of slots may change based on jobs running in other pools; a pool with a minimum share configured, for example, may take slots away from another pool to reach that minimum share when a job runs in that pool.
@@ -1106,7 +1409,7 @@ Correct Answer:
 
 
 
-You have configured the Fair Scheduler on your Hadoop cluster. You submit a job A, so that ONLY job A is running on the cluster. Job A requires more task resources than are available simultaneously on the cluster. Later you submit job B. Now job A and job B are running on the cluster at the same time. 
+You have configured the Fair Scheduler on your Hadoop cluster. You submit a job A, so that ONLY job A is running on the cluster. Job A requires more task resources than are available simultaneously on the cluster. Later you submit job B. Now job A and job B are running on the cluster at the same time.
 
 Identify two aspects of how the Fair Scheduler will arbitrate cluster resources for these two jobs?
 
@@ -1144,7 +1447,7 @@ How does the NameNode know which DataNodes are currently available on a cluster?
 Correct Answer:
 DataNodes heartbeat in to the master on a regular basis.
 
-DataNodes heartbeat in to the master every three seconds. When a DataNode heartbeats in to the NameNode the first time, the NameNode marks it as being available. DataNodes can be listed in a file pointed to by the dfs.hosts property, but this only lists the names of possible DataNodes. It is not a definitive list of those which are available but, rather, a list of the only machines which may be used as DataNodes if they begin to heartbeat. 
+DataNodes heartbeat in to the master every three seconds. When a DataNode heartbeats in to the NameNode the first time, the NameNode marks it as being available. DataNodes can be listed in a file pointed to by the dfs.hosts property, but this only lists the names of possible DataNodes. It is not a definitive list of those which are available but, rather, a list of the only machines which may be used as DataNodes if they begin to heartbeat.
 
 .
 A client application writes a file to HDFS on your cluster. Which two metadata changes occur?
@@ -1153,7 +1456,7 @@ Correct Answer:
  	The metadata in RAM on the NameNode is updated
  	 	The change is written to the edits file
 
-The NameNode metadata contains information about every file stored in HDFS. The NameNode holds the metadata in RAM for fast access, so any change is reflected in that RAM version. However, this is not sufficient for reliability, since if the NameNode crashes information on the change would be lost. For that reason, the change is also written to a log file known as the edits file. 
+The NameNode metadata contains information about every file stored in HDFS. The NameNode holds the metadata in RAM for fast access, so any change is reflected in that RAM version. However, this is not sufficient for reliability, since if the NameNode crashes information on the change would be lost. For that reason, the change is also written to a log file known as the edits file.
 
 
 
@@ -1164,15 +1467,15 @@ To ensure that data isn’t lost in the event of a RegionServer failure
 
 
 
-You have a cluster running 32 slave nodes and three master nodes, running MapReduce v1 (MRv1). You execute the command: 
+You have a cluster running 32 slave nodes and three master nodes, running MapReduce v1 (MRv1). You execute the command:
 
-$ hadoop fsck /
+  hadoop fsck /
 
 Correct Answer:
  	The number of DataNodes in the cluster
  	The number of under-replicated blocks in the cluster
 
-In its standard form, hadoop fsck / will return information about the cluster including the number of DataNodes and the number of under-replicated blocks. 
+In its standard form, hadoop fsck / will return information about the cluster including the number of DataNodes and the number of under-replicated blocks.
 
 To view a list of all the files in the cluster, the command would be hadoop fsck / -files
 
@@ -1189,13 +1492,13 @@ Correct Answer:
  	An edit log of changes that have been made since the last snapshot compaction by the Secondary NameNode
  	File permissions of the files in HDFS
 
-The NameNode holds its metadata in RAM for fast access. However, it also needs to persist that information to disk. The initial metadata on disk is stored in a file called fsimage. Metadata in fsimage includes the names of all the files in HDFS, their locations (the directory structure), and file permissions. Whenever a change is made to the metadata (such as a new file being created, or a file being deleted), that information is written to a file on disk called edits. Periodically, the Secondary NameNode coalesces the edits and fsimage files and writes the result back as a new fsimage file, at which point the NameNode can delete its old edits file. 
+The NameNode holds its metadata in RAM for fast access. However, it also needs to persist that information to disk. The initial metadata on disk is stored in a file called fsimage. Metadata in fsimage includes the names of all the files in HDFS, their locations (the directory structure), and file permissions. Whenever a change is made to the metadata (such as a new file being created, or a file being deleted), that information is written to a file on disk called edits. Periodically, the Secondary NameNode coalesces the edits and fsimage files and writes the result back as a new fsimage file, at which point the NameNode can delete its old edits file.
 
 The NameNode has no knowledge of when it was last backed up. Heartbeat information from the DataNodes is held in RAM but is not persisted to disk.
 
 
 
-You are configuring a highly available production HBase cluster and have specified a ZooKeeper ensemble of 5 nodes. How many simultaneous ZooKeeper outages can your ensemble handle?	
+You are configuring a highly available production HBase cluster and have specified a ZooKeeper ensemble of 5 nodes. How many simultaneous ZooKeeper outages can your ensemble handle?
 
 In order to form a proper ZooKeeper quorum, you need at least 3. Therefore, a ZooKeeper ensemble of 5 allows 2 peers to fail.
 
@@ -1250,7 +1553,7 @@ Correct Answer:
  	An edit log of changes that have been made since the last snapshot compaction by the Secondary NameNode
  	File permissions of the files in HDFS
 
-The NameNode holds its metadata in RAM for fast access. However, it also needs to persist that information to disk. The initial metadata on disk is stored in a file called fsimage. Metadata in fsimage includes the names of all the files in HDFS, their locations (the directory structure), and file permissions. Whenever a change is made to the metadata (such as a new file being created, or a file being deleted), that information is written to a file on disk called edits. Periodically, the Secondary NameNode coalesces the edits and fsimage files and writes the result back as a new fsimage file, at which point the NameNode can delete its old edits file. 
+The NameNode holds its metadata in RAM for fast access. However, it also needs to persist that information to disk. The initial metadata on disk is stored in a file called fsimage. Metadata in fsimage includes the names of all the files in HDFS, their locations (the directory structure), and file permissions. Whenever a change is made to the metadata (such as a new file being created, or a file being deleted), that information is written to a file on disk called edits. Periodically, the Secondary NameNode coalesces the edits and fsimage files and writes the result back as a new fsimage file, at which point the NameNode can delete its old edits file.
 
 The NameNode has no knowledge of when it was last backed up. Heartbeat information from the DataNodes is held in RAM but is not persisted to disk.
 
@@ -1317,7 +1620,7 @@ How does the NameNode know which DataNodes are currently available on a cluster?
 Correct Answer:
 DataNodes heartbeat in to the master on a regular basis.
 
-DataNodes heartbeat in to the master every three seconds. When a DataNode heartbeats in to the NameNode the first time, the NameNode marks it as being available. DataNodes can be listed in a file pointed to by the dfs.hosts property, but this only lists the names of possible DataNodes. It is not a definitive list of those which are available but, rather, a list of the only machines which may be used as DataNodes if they begin to heartbeat. 
+DataNodes heartbeat in to the master every three seconds. When a DataNode heartbeats in to the NameNode the first time, the NameNode marks it as being available. DataNodes can be listed in a file pointed to by the dfs.hosts property, but this only lists the names of possible DataNodes. It is not a definitive list of those which are available but, rather, a list of the only machines which may be used as DataNodes if they begin to heartbeat.
 
 --
 Which two daemons typically run on each slave node in a Hadoop cluster running MapReduce v2 (MRv2) on YARN?
@@ -1361,7 +1664,7 @@ The number of Mappers is equal to the number of InputSplits calculated by the cl
 
 Each Mapper task processes a single InputSplit. The client calculates the InputSplits before submitting the job to the cluster. The developer may specify how the input split is calculated, with a single HDFS block being the most common split. This is true for both MapReduce v1 (MRv1) and YARN MapReduce implementations.
 
-With YARN, each mapper will be run in a container which consists of a specific amount of CPU and memory resources. The ApplicationMaster requests a container for each mapper. The ResourceManager schedules the resources and instructs the ApplicationMaster of available NodeManagers where the container may be launched. 
+With YARN, each mapper will be run in a container which consists of a specific amount of CPU and memory resources. The ApplicationMaster requests a container for each mapper. The ResourceManager schedules the resources and instructs the ApplicationMaster of available NodeManagers where the container may be launched.
 
 With MRv1, each Tasktracker (slave node) is configured to handle a maximum number of concurrent map tasks. The JobTracker (master node) assigns a Tasktracker a specific Inputslit to process as a single map task.
 
