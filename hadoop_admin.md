@@ -54,9 +54,9 @@ ack packets from the pipeline are sent back to the client
 1. first copy of the block is placed on the same node as the client
 -if the cleint is not part of the cluster, the first block is placed on a random node
 
-2. second copy of the block is placed on a node residing on a different rack
+2. second copy of the block is placed on a node residing in the same rack as the first
 
-3. third copy of the block is placed on different node in the same rach as the second copy
+3. third copy of the block is placed on a node in a different rack
 
 ### Anatomy of a file read
 
