@@ -64,7 +64,7 @@ ack packets from the pipeline are sent back to the client
 
 2. namenode returns the name and locations of the first few blocks of the file (closest returned first)
 
-3. client connects to the first of the datanodes, then reads the block
+3. client connects to the first of the datanodes, then reads the block and blocks wil be fetched parallely by the client to achieve parallelism
 
 if the datadatanode fails during the read, the client will seamlessly connect to the next one in the list to read the block
 
@@ -161,7 +161,7 @@ hdsf port  8020
 dfs.replication 			: to config replication rate e.g 1
 
 * copy from local
-	```hadoop fs -copyFromLocal local/input/text.txt hdfs://localhost/user/bob/text.txt```
+	```hdfs dfs -copyFromLocal local/input/text.txt hdfs://localhost/user/bob/text.txt```
 	-copyToLocal
 
 
